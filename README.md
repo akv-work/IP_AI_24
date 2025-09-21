@@ -15,3 +15,9 @@
 Отчеты коммитаем в **reports/<Ваша_фамилия>/<Номер_лабораторной_работы>/rep**
 
 Код коммитаем в **reports/<Ваша_фамилия>/<Номер_лабораторной_работы>/src**
+
+**Журналы:**
+
+1 подгруппа: https://docs.google.com/spreadsheets/d/1NJ7ZczfB85wjXx9DZ-MJN6goHNwdkuuhRdK4ax_oXrk/edit?usp=sharing
+
+2 подгруппа: https://docs.google.com/spreadsheets/d/18T-KDsZjlch0KuVS5WSmCsLSieCxZsXXGPYA8HsiWz4/edit?usp=sharing
