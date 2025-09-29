@@ -4,7 +4,6 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
-import numpy as np
 import time
 
 class SimpleCNN(nn.Module):
@@ -33,13 +32,22 @@ class SimpleCNN(nn.Module):
         x = self.classifier(x)
         return x
 
+def imshow(img_tensor):
+    npimg = img_tensor.squeeze().numpy()
+    plt.imshow(npimg, cmap='gray')
+    plt.axis('off')
+    plt.show()
+
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Используемое устройство: {device}")
 
-    transform = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.5,), (0.5,))])
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+    
+    unnormalize = transforms.Normalize((-1.0,), (2.0,))
 
     train_set = torchvision.datasets.FashionMNIST(root='./data', train=True,
                                             download=True, transform=transform)
@@ -65,20 +73,33 @@ if __name__ == '__main__':
     num_epochs = 10
 
     for epoch in range(num_epochs):
+        model.train()
         running_loss = 0.0
         for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
-
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-
+        
         epoch_loss = running_loss / len(train_loader)
         loss_history.append(epoch_loss)
         print(f'Эпоха {epoch + 1}/{num_epochs}, Ошибка (Loss): {epoch_loss:.4f}')
+
+        model.eval()
+        train_correct = 0
+        train_total = 0
+        with torch.no_grad():
+            for images, labels in train_loader:
+                images, labels = images.to(device), labels.to(device)
+                outputs = model(images)
+                _, predicted = torch.max(outputs, 1)
+                train_total += labels.size(0)
+                train_correct += (predicted == labels).sum().item()
+        train_accuracy = 100 * train_correct / train_total
+        print(f'Точность на обучающей выборке: {train_accuracy:.2f} %')
 
     end_time = time.time()
     print('Обучение завершено')
@@ -88,8 +109,8 @@ if __name__ == '__main__':
     correct = 0
     total = 0
     with torch.no_grad():
-        for data in test_loader:
-            images, labels = data[0].to(device), data[1].to(device)
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -110,18 +131,11 @@ if __name__ == '__main__':
     print("\n--- Визуализация результата ---")
     
     dataiter = iter(test_loader)
-    images, labels = next(dataiter)
+    images_viz, labels_viz = next(dataiter)
 
     img_index = 5
-    image_to_show = images[img_index]
-    true_label = labels[img_index]
-
-    def imshow(img):
-        img = img / 2 + 0.5
-        npimg = img.numpy()
-        plt.imshow(np.transpose(npimg, (1, 2, 0)))
-        plt.axis('off')
-        plt.show()
+    image_to_show = images_viz[img_index]
+    true_label = labels_viz[img_index]
 
     model.eval()
     with torch.no_grad():
@@ -131,4 +145,5 @@ if __name__ == '__main__':
     print(f'Реальный класс:      {classes[true_label]}')
     print(f'Предсказанный класс: {classes[predicted_index.item()]}')
 
-    imshow(image_to_show)
+    image_for_display = unnormalize(image_to_show.cpu())
+    imshow(image_for_display)
