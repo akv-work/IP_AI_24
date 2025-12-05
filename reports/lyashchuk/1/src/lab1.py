@@ -9,6 +9,8 @@ import torchvision
 import torchvision.transforms as transforms
 import matplotlib
 
+
+
 # Используем бэкенд, не требующий дисплея
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
