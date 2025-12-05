@@ -1,5 +1,7 @@
 import os
 import time
+import requests
+from io import BytesIO
 from datetime import datetime
 from PIL import Image
 import numpy as np
@@ -13,295 +15,277 @@ import torchvision
 from torchvision import transforms, models
 
 # ======================
-# ПАРАМЕТРЫ ОБУЧЕНИЯ
+# ПАРАМЕТРЫ
 # ======================
-EPOCHS = 20
+EPOCHS = 10
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 1e-4
-FREEZE_BACKBONE = False
-
-# Пути
-SAVE_DIR = 'checkpoints_fashion_mnist'
-RESUME_TRAINING = False
-RESUME_PATH = None
-VISUALIZE_IMAGE = None  # Путь к изображению для предсказания
-
-# Настройки данных
+INPUT_SIZE = 64
 NUM_WORKERS = 4
-INPUT_SIZE = 224
-LOG_INTERVAL = 50  # Интервал логирования (в батчах)
+SAVE_DIR = 'results_lab2'
+
+# Ссылка на произвольное изображение из интернета для теста (Пункт 4)
+TEST_IMAGE_URL = "data:image/jpeg;base64,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"  # Пример футболки
+
+# Устройство
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Классы Fashion-MNIST
+CLASSES = [
+    'T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
+    'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'
+]
 
 
 # ======================
-# МОДЕЛЬ И ФУНКЦИИ
+# 1. МОДЕЛИ
 # ======================
-def create_densenet121(num_classes=10, freeze_backbone=False):
+
+
+# --- Модель из ЛР 2 (DenseNet121) ---
+def create_densenet121(num_classes=10):
+    print("Creating DenseNet121...")
     model = models.densenet121(weights=models.DenseNet121_Weights.IMAGENET1K_V1)
 
     # Замена классификатора
     in_features = model.classifier.in_features
     model.classifier = nn.Linear(in_features, num_classes)
-
-    if freeze_backbone:
-        for name, param in model.named_parameters():
-            if 'classifier' not in name:
-                param.requires_grad = False
     return model
 
 
-def evaluate(model, loader, device, criterion):
-    model.eval()
-    running_loss, correct, total = 0.0, 0, 0
-    with torch.no_grad():
-        for x, y in loader:
-            x, y = x.to(device), y.to(device)
-            out = model(x)
-            loss = criterion(out, y)
-            running_loss += loss.item() * x.size(0)
-            preds = out.argmax(dim=1)
-            correct += (preds == y).sum().item()
-            total += x.size(0)
-    return running_loss / total, 100.0 * correct / total
+# --- Модель из ЛР 1 (Кастомная архитектура) ---
+# ВАЖНО: Сюда лучше вставить класс твоей модели из первой лабы.
+# Я написал универсальный пример, который работает с размером 224x224.
+class CustomCNN_Lab1(nn.Module):
+    def __init__(self, num_classes=10):
+        super(CustomCNN_Lab1, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),  # Вход 3 канала (т.к. трансформ общий)
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((4, 4))  # Адаптивный пулинг, чтобы не зависеть от размера входа
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 4 * 4, 512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_classes)
+        )
 
-
-def predict_image(path, model, device, transform, input_size, classes):
-    img = Image.open(path).convert('RGB')
-    img_resized = img.resize((input_size, input_size))
-    x = transform(img_resized).unsqueeze(0).to(device)
-    model.eval()
-    with torch.no_grad():
-        logits = model(x)
-        probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
-        pred = int(np.argmax(probs))
-    return img, pred, probs
+    def forward(self, x):
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
 
 
 # ======================
-# ОСНОВНАЯ ФУНКЦИЯ
+# 2. ФУНКЦИИ ОБУЧЕНИЯ
 # ======================
-def main():
-    # Настройка устройства
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f'Using device: {device}')
-    if torch.cuda.is_available():
-        print(f'GPU: {torch.cuda.get_device_name(0)}')
 
-    # Создание директории для сохранения
-    os.makedirs(SAVE_DIR, exist_ok=True)
 
-    # Параметры нормализации
-    imagenet_mean = (0.485, 0.456, 0.406)
-    imagenet_std = (0.229, 0.224, 0.225)
+def train_one_epoch(model, loader, optimizer, criterion):
+    model.train()
+    running_loss = 0.0
+    for inputs, labels in loader:
+        inputs, labels = inputs.to(device), labels.to(device)
 
-    # Преобразования с конвертацией в 3 канала
-    train_transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=3),
-        transforms.RandomResizedCrop(INPUT_SIZE, scale=(0.8, 1.0)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(imagenet_mean, imagenet_std)
-    ])
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
 
-    test_transform = transforms.Compose([
-        transforms.Grayscale(num_output_channels=3),
-        transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
-        transforms.ToTensor(),
-        transforms.Normalize(imagenet_mean, imagenet_std)
-    ])
+        running_loss += loss.item() * inputs.size(0)
+    return running_loss / len(loader.dataset)
 
-    # Загрузка данных
-    print("Loading Fashion-MNIST dataset...")
-    train_set = torchvision.datasets.FashionMNIST(
-        root='./data',
-        train=True,
-        download=True,
-        transform=train_transform
-    )
-    test_set = torchvision.datasets.FashionMNIST(
-        root='./data',
-        train=False,
-        download=True,
-        transform=test_transform
-    )
 
-    # Создание загрузчиков данных
-    train_loader = DataLoader(
-        train_set,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        num_workers=NUM_WORKERS,
-        pin_memory=True
-    )
-    test_loader = DataLoader(
-        test_set,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=NUM_WORKERS,
-        pin_memory=True
-    )
+def evaluate(model, loader, criterion):
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for inputs, labels in loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
 
-    # Классы Fashion-MNIST
-    classes = [
-        'T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
-        'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'
-    ]
+            running_loss += loss.item() * inputs.size(0)
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
 
-    # Создание модели
-    print("Creating DenseNet121 model...")
-    model = create_densenet121(
-        num_classes=10,
-        freeze_backbone=FREEZE_BACKBONE
-    ).to(device)
+    return running_loss / len(loader.dataset), 100. * correct / total
 
-    # Функция потерь и оптимизатор
+
+def train_model(model, train_loader, test_loader, model_name="Model"):
+    print(f"\nTraining {model_name} on {device}...")
+
+    # Оптимизатор RMSprop (по заданию)
+    optimizer = optim.RMSprop(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.RMSprop(
-        [p for p in model.parameters() if p.requires_grad],
-        lr=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY
-    )
-    scheduler = optim.lr_scheduler.StepLR(
-        optimizer,
-        step_size=max(5, EPOCHS // 2),
-        gamma=0.1
-    )
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
-    # Возобновление обучения
-    start_epoch = 1
     history = {'train_loss': [], 'test_loss': [], 'test_acc': []}
 
-    if RESUME_TRAINING or RESUME_PATH:
-        ckpt_path = RESUME_PATH
-        if RESUME_TRAINING and ckpt_path is None:
-            files = [f for f in os.listdir(SAVE_DIR) if f.endswith('.pth')]
-            if files:
-                files = sorted(files, key=lambda x: int(x.split('epoch')[-1].split('.')[0]))
-                ckpt_path = os.path.join(SAVE_DIR, files[-1])
+    start_time = time.time()
 
-        if ckpt_path and os.path.isfile(ckpt_path):
-            print(f"Loading checkpoint {ckpt_path} ...")
-            ckpt = torch.load(ckpt_path, map_location=device)
-            model.load_state_dict(ckpt['model_state'])
-            optimizer.load_state_dict(ckpt['optimizer_state'])
-            start_epoch = ckpt['epoch'] + 1
-            print(f"Resumed from epoch {ckpt['epoch']}")
-        else:
-            print("⚠️ Checkpoint not found, starting from scratch")
-
-    # Обучение модели
-    print(f"Starting training for {EPOCHS} epochs...")
-    global_start_time = time.time()
-
-    for epoch in range(start_epoch, EPOCHS + 1):
-        epoch_start_time = time.time()
-        model.train()
-        running_loss = 0.0
-
-        # Логирование времени для батчей
-        batch_times = []
-        batch_start_time = time.time()
-
-        for batch_idx, (xb, yb) in enumerate(train_loader, 1):
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-
-            # Прямой проход
-            logits = model(xb)
-            loss = criterion(logits, yb)
-
-            # Обратный проход
-            loss.backward()
-            optimizer.step()
-
-            # Статистика
-            running_loss += loss.item() * xb.size(0)
-
-            # Логирование каждые LOG_INTERVAL батчей
-            if batch_idx % LOG_INTERVAL == 0:
-                batch_time = time.time() - batch_start_time
-                batch_times.append(batch_time)
-
-                # Прогноз оставшегося времени эпохи
-                avg_batch_time = np.mean(batch_times[-10:]) if len(batch_times) > 10 else batch_time
-                remaining_batches = len(train_loader) - batch_idx
-                eta_seconds = avg_batch_time * remaining_batches
-                eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
-
-                current_time = datetime.now().strftime("%H:%M:%S")
-                print(f"[{current_time}] Epoch {epoch}/{EPOCHS} | "
-                      f"Batch {batch_idx}/{len(train_loader)} | "
-                      f"Loss: {loss.item():.6f} | "
-                      f"Batch Time: {batch_time:.3f}s | "
-                      f"ETA: {eta_str}")
-
-                batch_start_time = time.time()
-
-        # Статистика эпохи
-        epoch_time = time.time() - epoch_start_time
-        train_loss = running_loss / len(train_loader.dataset)
-        test_loss, test_acc = evaluate(model, test_loader, device, criterion)
-
-        history['train_loss'].append(train_loss)
-        history['test_loss'].append(test_loss)
-        history['test_acc'].append(test_acc)
+    for epoch in range(EPOCHS):
+        t_loss = train_one_epoch(model, train_loader, optimizer, criterion)
+        v_loss, v_acc = evaluate(model, test_loader, criterion)
         scheduler.step()
 
-        print(f"Epoch {epoch}/{EPOCHS} completed in {epoch_time:.2f}s | "
-              f"TrainLoss {train_loss:.4f} | TestLoss {test_loss:.4f} | "
-              f"TestAcc {test_acc:.2f}%")
+        history['train_loss'].append(t_loss)
+        history['test_loss'].append(v_loss)
+        history['test_acc'].append(v_acc)
 
-        # Сохранение контрольной точки
-        checkpoint_path = os.path.join(SAVE_DIR, f'densenet121_epoch{epoch}.pth')
-        torch.save({
-            'epoch': epoch,
-            'model_state': model.state_dict(),
-            'optimizer_state': optimizer.state_dict()
-        }, checkpoint_path)
-        print(f"Checkpoint saved: {checkpoint_path}")
+        print(f"Epoch {epoch + 1}/{EPOCHS} | Train Loss: {t_loss:.4f} | Val Loss: {v_loss:.4f} | Val Acc: {v_acc:.2f}%")
 
-    # Итоговое время обучения
-    total_time = time.time() - global_start_time
-    print(f'Training finished in {total_time / 60:.2f} minutes')
+    total_time = time.time() - start_time
+    print(f"{model_name} training finished in {total_time:.1f}s")
 
-    # Построение графиков обучения
-    plt.figure(figsize=(12, 4))
+    return history, total_time
+
+
+# ======================
+# 3. ВИЗУАЛИЗАЦИЯ
+# ======================
+
+
+def download_image(url):
+    try:
+        response = requests.get(url)
+        img = Image.open(BytesIO(response.content)).convert('RGB')
+        return img
+    except Exception as e:
+        print(f"Error downloading image: {e}")
+        return None
+
+
+def visualize_comparison(model_densenet, model_custom, transform):
+    print("\n--- Visualizing Predictions ---")
+
+    # Скачиваем изображение
+    img_orig = download_image(TEST_IMAGE_URL)
+    if img_orig is None:
+        return
+
+    # Подготовка изображения
+    img_tensor = transform(img_orig).unsqueeze(0).to(device)
+
+    model_densenet.eval()
+    model_custom.eval()
+
+    with torch.no_grad():
+        # DenseNet Prediction
+        out1 = model_densenet(img_tensor)
+        prob1 = torch.softmax(out1, dim=1)
+        score1, pred1 = prob1.max(1)
+        label1 = CLASSES[pred1.item()]
+
+        # Custom CNN Prediction
+        out2 = model_custom(img_tensor)
+        prob2 = torch.softmax(out2, dim=1)
+        score2, prob2 = prob2.max(1)
+        label2 = CLASSES[prob2.item()]
+
+    # Отображение
+    plt.figure(figsize=(10, 5))
+
     plt.subplot(1, 2, 1)
-    plt.plot(range(1, EPOCHS + 1), history['train_loss'], label='train')
-    plt.plot(range(1, EPOCHS + 1), history['test_loss'], label='test', linestyle='--')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Loss')
-    plt.legend()
+    plt.imshow(img_orig)
+    plt.axis('off')
+    plt.title(f"DenseNet121 Prediction:\n{label1} ({score1.item():.2%})", color='green')
 
     plt.subplot(1, 2, 2)
-    plt.plot(range(1, EPOCHS + 1), history['test_acc'], label='test acc')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy (%)')
-    plt.title('Test Accuracy')
-    plt.legend()
+    plt.imshow(img_orig)
+    plt.axis('off')
+    plt.title(f"Custom CNN (Lab 1) Prediction:\n{label2} ({score2.item():.2%})", color='blue')
 
     plt.tight_layout()
-    history_path = os.path.join(SAVE_DIR, 'training_history.png')
-    plt.savefig(history_path, dpi=150)
-    print(f'Saved history plot to {history_path}')
+    plt.savefig(os.path.join(SAVE_DIR, 'visualization_comparison.png'))
+    plt.show()
 
-    # Визуализация (если указан путь к изображению)
-    if VISUALIZE_IMAGE:
-        print(f"Making prediction for image: {VISUALIZE_IMAGE}")
-        img, pred_idx, probs = predict_image(
-            VISUALIZE_IMAGE,
-            model,
-            device,
-            test_transform,
-            INPUT_SIZE,
-            classes
-        )
-        plt.figure(figsize=(4, 4))
-        plt.imshow(img)
-        plt.axis('off')
-        plt.title(f'Pred: {classes[pred_idx]} ({probs[pred_idx] * 100:.1f}%)')
-        plt.show()
+
+# ======================
+# MAIN
+# ======================
+def main():
+    os.makedirs(SAVE_DIR, exist_ok=True)
+
+    # 1. Данные
+    # Используем одинаковые преобразования для чистоты эксперимента (размер 224 для DenseNet)
+    # Grayscale(3) нужен, так как DenseNet ожидает 3 канала (RGB)
+    imagenet_mean = [0.485, 0.456, 0.406]
+    imagenet_std = [0.229, 0.224, 0.225]
+
+    transform = transforms.Compose([
+        transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
+        transforms.Grayscale(num_output_channels=3),
+        transforms.ToTensor(),
+        transforms.Normalize(imagenet_mean, imagenet_std)
+    ])
+
+    train_set = torchvision.datasets.FashionMNIST(root='./data', train=True, download=True, transform=transform)
+    test_set = torchvision.datasets.FashionMNIST(root='./data', train=False, download=True, transform=transform)
+
+    train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+    test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
+
+    # 2. Создание моделей
+    dense_model = create_densenet121().to(device)
+    custom_model = CustomCNN_Lab1().to(device)
+
+    # 3. Обучение
+    dense_hist, dense_time = train_model(dense_model, train_loader, test_loader, "DenseNet121")
+    custom_hist, custom_time = train_model(custom_model, train_loader, test_loader, "CustomCNN")
+
+    # 4. Сравнение результатов (Графики)
+    epochs_range = range(1, EPOCHS + 1)
+
+    plt.figure(figsize=(14, 5))
+
+    # Loss comparison
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs_range, dense_hist['test_loss'], label='DenseNet Val Loss', marker='o')
+    plt.plot(epochs_range, custom_hist['test_loss'], label='Custom Val Loss', marker='x', linestyle='--')
+    plt.title('Validation Loss Comparison')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+
+    # Accuracy comparison
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs_range, dense_hist['test_acc'], label='DenseNet Val Acc', marker='o')
+    plt.plot(epochs_range, custom_hist['test_acc'], label='Custom Val Acc', marker='x', linestyle='--')
+    plt.title('Validation Accuracy Comparison')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy (%)')
+    plt.legend()
+    plt.grid(True)
+
+    plt.savefig(os.path.join(SAVE_DIR, 'comparison_plots.png'))
+    print(f"Comparison plots saved to {SAVE_DIR}")
+    plt.show()
+
+    # Вывод текстовой таблицы сравнения
+    print("\n" + "=" * 40)
+    print(f"{'Metric':<15} | {'DenseNet121':<10} | {'CustomCNN':<10}")
+    print("-" * 40)
+    print(f"{'Best Acc (%)':<15} | {max(dense_hist['test_acc']):<10.2f} | {max(custom_hist['test_acc']):<10.2f}")
+    print(f"{'Training Time':<15} | {dense_time:<10.1f}s| {custom_time:<10.1f}s")
+    print("=" * 40 + "\n")
+
+    # 5. Визуализация работы на произвольном изображении
+    visualize_comparison(dense_model, custom_model, transform)
 
 
 if __name__ == "__main__":
